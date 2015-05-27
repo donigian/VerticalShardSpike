@@ -39,16 +39,16 @@ Different Ways to Shard
 Example: In this scheme, you use part of the data itself to do the partitioning. 
 Sharding function may be `hash(user_id) % NUM_DB.`
 
-    **Pros**: Simple, fine grained can reduce hotspots.
+   **Pros**: Simple, fine grained can reduce hotspots.
     
-    **Cons**: Hotspots, resharding data is a pain as Consistency & Availability are compromised.
+   **Cons**: Hotspots, resharding data is a pain as Consistency & Availability are compromised.
 
 **Domain Partitioning**  
 In this scheme, all of the data related to a specific feature of a product are stored on the same machines. A different cluster of machines served each of Profiles, Messages, etc.
     
-    **Pros**: Handles non-uniform data better than algorithmic sharding
+   **Pros**: Handles non-uniform data better than algorithmic sharding
     
-    **Cons**: Join multiple data sets
+   **Cons**: Join multiple data sets
 
 **Directory Based Sharding**
 This scheme maintains a lookup table somewhere in the cluster which keeps track of which data is stored on which shard.
@@ -59,16 +59,23 @@ This scheme maintains a lookup table somewhere in the cluster which keeps track 
 
 This spike implements **Directory Based Sharding** using the following tables/entities:
 
+ShardIndexRecord
+--------------------
 ```
 /* Purpose of ShardIndexRecord is to store/correlate connectionString for a particular shardId. This allows one to find database server connection specific to a given shard */
 case class ShardIndexRecord(shardId: String, connectionString: String, status: Boolean, createdDate: Long)
 ```
 
   **shardId** – used as globally unique id for a shard
+  
   **connectionString** – a connection string used to connect to a shard
+  
   **status** – used to signify a shard’s status as available or not available
+  
   **createdDate** – the date the shard was added to the system, used for historical purposes
 
+UserShardRecord
+--------------------
 ```
 /* Purpose of UserShardRecord is to store/correlate shardId for a particular userId */
 case class UserShardRecord(userId: String, shardId: String)
@@ -77,6 +84,8 @@ case class UserShardRecord(userId: String, shardId: String)
 
 **shardId** –used to uniquely identify the current shard that a user is located on
 
+DomainShardRecord
+--------------------
 ```
 /* Purpose of DomainShardRecord is to store/correlate Domain Partition for a particular userId */
 case class DomainShardRecord(userId: String, password: String, userName: String)
@@ -121,10 +130,10 @@ Let's walk through the following 4 common SQL command types (CRUD) operations in
 
 **Select Scenario: A system visitor views a user’s profile page.**
 
- -  Connect to the ShardIndexRecord using an application configuration-level connection string.
- -  Query the UserShardRecord table, using the userId of the user, and retrieve the UserShardRecord row that contains the user’s lookup information.
- -  Query the shard table and retrieve the shard row that represents the user’s Domain Shard location.
- -  Disconnect from the ShardIndexRecord.
+ - Connect to the ShardIndexRecord using an application configuration-level connection string.
+ - Query the UserShardRecord table, using the userId of the user, and retrieve the UserShardRecord row that contains the user’s lookup information.
+ - Query the shard table and retrieve the shard row that represents the user’s Domain Shard location.
+ - Disconnect from the ShardIndexRecord.
  - Connect to the DomainShardRecord as specified by the previously retrieved shard row’s connectionString.
  - Query the UserShardRecord table to retrieve the user’s basic information, using the previously retrieved userId.
  - As necessary, query the user’s additional profile information via DomainShardRecord.
