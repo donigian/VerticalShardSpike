@@ -1,5 +1,8 @@
 Partitioning Spike!
 ===================
+**tl;dr** 
+The following Implementation includes read() and write() methods for DomainShardRecord vertically partitioned using Directory Based Sharding strategy.
+
 Some common terminology with regards to database scalability: 
 
 The best way to deal with a problem is to avoid having to solve it. An ounce of prevention is worth of pound of cure. This spike is dedicated to times where `you must shard`! Before you shard, see if the following applies...
@@ -87,7 +90,7 @@ case class UserShardRecord(userId: String, shardId: String)
 DomainShardRecord
 --------------------
 ```
-/* Purpose of DomainShardRecord is to store/correlate Domain Partition for a particular userId */
+/* Purpose of DomainShardRecord is to store/correlate Domain Partition for a particular userId. To surpass the max column width limitation with RDBMs, you can implement additional case classes for other Entities. */
 case class DomainShardRecord(userId: String, password: String, userName: String)
 ```
 
@@ -102,7 +105,7 @@ Let's walk through the following 4 common SQL command types (CRUD) operations in
  - Insert the user’s info into the user table.  
  - Disconnect from the DomainShardRecord.
  - Connect to ShardIndexRecord using an application configuration-level connection string.
- - Insert the new user’s lookup information into the UserShardRecord table, using the shardId from the retrieved shard table and the userId from the DomainShardRecord user table, for the new location of the user’s information.
+ - Insert the new user’s lookup information into the UserShardRecord table, using the shardId from the retrieved shard table and the userId from the Domain Shard’s user table, for the new location of the user’s information.
  - Disconnect from the ShardIndexRecord.
  
 
@@ -130,11 +133,12 @@ Let's walk through the following 4 common SQL command types (CRUD) operations in
 
 **Select Scenario: A system visitor views a user’s profile page.**
 
- - Connect to the ShardIndexRecord using an application configuration-level connection string.
- - Query the UserShardRecord table, using the userId of the user, and retrieve the UserShardRecord row that contains the user’s lookup information.
- - Query the shard table and retrieve the shard row that represents the user’s DomainShardRecord location.
- - Disconnect from the ShardIndexRecord.
+ -  Connect to the ShardIndexRecord using an application configuration-level connection string.
+ -  Query the UserShardRecord table, using the userId of the user, and retrieve the UserShardRecord row that contains the user’s lookup information.
+ -  Query the shard table and retrieve the shard row that represents the user’s Domain Shard location.
+ -  Disconnect from the ShardIndexRecord.
  - Connect to the DomainShardRecord as specified by the previously retrieved shard row’s connectionString.
  - Query the UserShardRecord table to retrieve the user’s basic information, using the previously retrieved userId.
  - As necessary, query the user’s additional profile information via DomainShardRecord.
  - Disconnect from the DomainShardRecord.
+
