@@ -1,6 +1,7 @@
 Partitioning Spike!
 ===================
 **tl;dr** 
+
 The following Implementation includes read() and write() methods for DomainShardRecord vertically partitioned using Directory Based Sharding strategy.
 
 Some common terminology with regards to database scalability: 
@@ -22,16 +23,34 @@ Sharding is necessary if a dataset is too large to be stored in a single databas
 
 **Horizontal Dataset Partitioning** – To partition a database table dataset horizontally is to partition a dataset by row.
  
- Example of vertical partitioning
+Example of vertical partitioning
+
+Consider the following table...
+
 ```
-fetch_user_data(user_id) -> db[“USER”].fetch(user_id)
-fetch_photo(photo_id) ->    db[“PHOTO”].fetch(photo_id)
+create table data (
+    id integer primary key, 
+    status char(1) not null, 
+    data1 varchar2(10) not null, 
+    data2 varchar2(10) not null);
+```
+
+You can split via most frequent vs rarely used table columns
+```
+create table data_main (
+    id integer primary key,
+    status char(1) not null,
+    data1 varchar2(10) not null );
+
+create table data_rarely_used (
+    id integer primary key,
+    data2 varchar2(10) not null,
+    foreign key (id) references data_main (id) );
+    
 ```
 
 Example of horizontal partitioning
-```
-fetch_user_data(user_id) -> user_db[user_id % 2].fetch(user_id)
-```
+You can split rows via a range split (ie. key % N) or the a fixed number of rows per shard.
 
 The next step is to determine what the **shard** or **partition key** should be. A **partition key** allows you to retrieve and modify data efficiently by routing operations to the correct database. A **logical shard** is a collection of data sharing the same partition key.
 
