@@ -7,7 +7,7 @@ object shardSpike {
 
   case class ShardIndexRecord(shardId: String, connectionString: String, status: Boolean, createdDate: Long)
   case class UserShardRecord(userId: String, shardId: String)
-  case class DomainRecord(userId: String, password: String, userName: String)
+  case class DomainShardRecord(userId: String, password: String, userName: String)
 
   val sqlCreateIndexShardTableStmt =
     """

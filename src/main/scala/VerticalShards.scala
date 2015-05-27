@@ -24,19 +24,19 @@ object externalizedConfigs {
 object VerticalShards {
 
   trait VerticalShardsManager {
-    def read(primaryKeys: List[String]): List[Option[DomainRecord]]
-    def write(domainRecord: DomainRecord): Unit
+    def read(primaryKeys: List[String]): List[Option[DomainShardRecord]]
+    def write(domainRecord: DomainShardRecord): Unit
   }
 
   class VerticalShardsManagerImpl extends VerticalShardsManager {
 
-    override def read(primaryKeys: List[String]): List[Option[DomainRecord]] = {
+    override def read(primaryKeys: List[String]): List[Option[DomainShardRecord]] = {
 
       if (!ShardMetadataTableCreated) {
         createShardMetadataTables
       }
 
-      val domainRecord: List[Option[DomainRecord]] = for {
+      val domainRecord: List[Option[DomainShardRecord]] = for {
         userId <- primaryKeys
         userShardRecord = findUserShardRecord(userId)
         shardRecord = findShardRecordById(userShardRecord.get.shardId).get
@@ -46,7 +46,7 @@ object VerticalShards {
       domainRecord
     }
 
-    override def write(domainRecord: DomainRecord): Unit = {
+    override def write(domainRecord: DomainShardRecord): Unit = {
       if (!ShardMetadataTableCreated) {
         createShardMetadataTables
       }
@@ -64,7 +64,7 @@ object VerticalShards {
       executeSql(s"INSERT INTO DomainShard VALUES ($userId, $shardId)", connectionString)
     }
 
-    def findDomainRecord(userId: String, connectionString: String): Option[DomainRecord] = {
+    def findDomainRecord(userId: String, connectionString: String): Option[DomainShardRecord] = {
       findDomainRecordById(s"SELECT * FROM DomainShard WHERE userId=$userId", connectionString)
     }
 
@@ -172,7 +172,7 @@ object VerticalShards {
       }
     }
 
-    def findDomainRecordById(sqlStmt: String, connectionString: String): Option[DomainRecord] = {
+    def findDomainRecordById(sqlStmt: String, connectionString: String): Option[DomainShardRecord] = {
 
       try {
         Class.forName(externalizedConfigs.dbDriver)
@@ -182,7 +182,7 @@ object VerticalShards {
         val resultSet = statement.executeQuery
         while (resultSet.next()) {
           connection.close()
-          Some(DomainRecord(resultSet.getString("user_id"), resultSet.getString("password"), resultSet.getString("userName")))
+          Some(DomainShardRecord(resultSet.getString("user_id"), resultSet.getString("password"), resultSet.getString("userName")))
         }
         None
       } catch {
