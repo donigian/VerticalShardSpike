@@ -84,51 +84,48 @@ case class DomainShardRecord(userId: String, password: String, userName: String)
 
 Let's walk through the following 4 common SQL command types (CRUD) operations in our sharded system. These command types are the SELECT, INSERT, UPDATE, and DELETE.
 
-
-
 **Insert Scenario: A new user signs up.**
-```
-  Connect to the ShardIndexRecord using an externalized application configuration-level connection string.
-  Query ShardIndexRecord and retrieve the next available shard row.
-  Disconnect from the ShardIndexRecord.
-  Connect to the DomainShardRecord as specified by the previously retrieved shard row’s connectionString.
-  Insert the user’s info into the user table.  
-  Disconnect from the DomainShardRecord.
-  Connect to ShardIndexRecord using an application configuration-level connection string.
-  Insert the new user’s lookup information into the UserShardRecord table, using the shardId from the retrieved shard table and the userId from the Domain Shard’s user table, for the new location of the user’s information.
-  Disconnect from the ShardIndexRecord.
-```
+
+ - Connect to the ShardIndexRecord using an externalized application configuration-level connection string.
+ - Query ShardIndexRecord and retrieve the next available shard row.
+ - Disconnect from the ShardIndexRecord.
+ - Connect to the DomainShardRecord as specified by the previously retrieved shard row’s connectionString.
+ - Insert the user’s info into the user table.  
+ - Disconnect from the DomainShardRecord.
+ - Connect to ShardIndexRecord using an application configuration-level connection string.
+ - Insert the new user’s lookup information into the UserShardRecord table, using the shardId from the retrieved shard table and the userId from the Domain Shard’s user table, for the new location of the user’s information.
+ - Disconnect from the ShardIndexRecord.
+ 
 
 **Update Scenario: A user changes their password.**
 
-  Connect to the ShardIndexRecord using an application configuration-level connection string.
-  Query the UserShardRecord table, using user_id of the user, and retrieve the UserShardRecord row that contains the user’s lookup information.
-  Query the ShardIndexRecord table and retrieve the shard row that represents the user’s DomainShardRecord location.
-  Update the retrieved UserShardRecord row, updating necessary fields.
-  Disconnect from the ShardIndexRecord.
+ - Connect to the ShardIndexRecord using an application configuration-level connection string.
+ - Query the UserShardRecord table, using user_id of the user, and retrieve the UserShardRecord row that contains the user’s lookup information.
+ - Query the ShardIndexRecord table and retrieve the shard row that represents the user’s DomainShardRecord location.
+ - Update the retrieved UserShardRecord row, updating necessary fields.
+ - Disconnect from the ShardIndexRecord.
 
 
 **Delete Scenario: A user closes their account.**
 
-  Connect to the ShardIndexRecord using an application configuration-level connection string.
-  Query the UserShardRecord table, using the userId of the user, and retrieve the UserShardRecord row that contains the user’s lookup information.
-  Query the shard table and retrieve the shard row that represents the user’s UserShardRecord location.
-  Delete the user’s UserShardRecord row userId to find the user’s row.
-  Disconnect from the ShardIndexRecord.
-  Connect to the DomainShardRecord as specified by the previously retrieved shard row’s connectionString.
-  Delete the user’s user row, found using the userId as retrieved earlier from the UserShardRecord table.
-  Disconnect from the DomainShardRecord.
-
+ - Connect to the ShardIndexRecord using an application
+   configuration-level connection string.   
+ - Query the UserShardRecord table, using the userId of the user, and retrieve the UserShardRecord row that contains the user’s lookup information.   
+ - Query the shard table and retrieve the shard row that represents the user’s
+   UserShardRecord location.   
+ - Delete the user’s UserShardRecord row userId to find the user’s row.
+ - Disconnect from the ShardIndexRecord.   
+ - Connect to the DomainShardRecord as specified by the previously retrieved shard row’s connectionString.   
+ - Delete the user’s user row, found using the userId as retrieved earlier from the UserShardRecord table.   
+ - Disconnect from the DomainShardRecord.
 
 **Select Scenario: A system visitor views a user’s profile page.**
 
-  Connect to the ShardIndexRecord using an application configuration-level connection string.
-  Query the UserShardRecord table, using the userId of the user, and retrieve the UserShardRecord row that contains the user’s lookup information.
-  Query the shard table and retrieve the shard row that represents the user’s Domain Shard location.
-  Disconnect from the ShardIndexRecord.
-  Connect to the Domain Shard as specified by the previously retrieved shard row’s connectionString.
-  Query the UserShardRecord table to retrieve the user’s basic information, using the previously retrieved userId.
-  As necessary, query the user’s additional profile information via DomainShardRecord.
-  Disconnect from the DomainShardRecord.
-
-  
+ -  Connect to the ShardIndexRecord using an application configuration-level connection string.
+ -  Query the UserShardRecord table, using the userId of the user, and retrieve the UserShardRecord row that contains the user’s lookup information.
+ -  Query the shard table and retrieve the shard row that represents the user’s Domain Shard location.
+ -  Disconnect from the ShardIndexRecord.
+ - Connect to the DomainShardRecord as specified by the previously retrieved shard row’s connectionString.
+ - Query the UserShardRecord table to retrieve the user’s basic information, using the previously retrieved userId.
+ - As necessary, query the user’s additional profile information via DomainShardRecord.
+ - Disconnect from the DomainShardRecord.
