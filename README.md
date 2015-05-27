@@ -102,7 +102,7 @@ Let's walk through the following 4 common SQL command types (CRUD) operations in
  - Insert the user’s info into the user table.  
  - Disconnect from the DomainShardRecord.
  - Connect to ShardIndexRecord using an application configuration-level connection string.
- - Insert the new user’s lookup information into the UserShardRecord table, using the shardId from the retrieved shard table and the userId from the Domain Shard’s user table, for the new location of the user’s information.
+ - Insert the new user’s lookup information into the UserShardRecord table, using the shardId from the retrieved shard table and the userId from the DomainShardRecord user table, for the new location of the user’s information.
  - Disconnect from the ShardIndexRecord.
  
 
@@ -132,7 +132,7 @@ Let's walk through the following 4 common SQL command types (CRUD) operations in
 
  - Connect to the ShardIndexRecord using an application configuration-level connection string.
  - Query the UserShardRecord table, using the userId of the user, and retrieve the UserShardRecord row that contains the user’s lookup information.
- - Query the shard table and retrieve the shard row that represents the user’s Domain Shard location.
+ - Query the shard table and retrieve the shard row that represents the user’s DomainShardRecord location.
  - Disconnect from the ShardIndexRecord.
  - Connect to the DomainShardRecord as specified by the previously retrieved shard row’s connectionString.
  - Query the UserShardRecord table to retrieve the user’s basic information, using the previously retrieved userId.
