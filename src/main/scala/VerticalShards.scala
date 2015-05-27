@@ -1,101 +1,221 @@
+package shard
+
 import java.sql.DriverManager
 import java.sql.Connection
+import com.typesafe.config.ConfigFactory
+import grizzled.slf4j.Logger
+
+import shardSpike._
 
 /**
  * Created by arm on 5/26/15.
  */
+
+object externalizedConfigs {
+  val conf = ConfigFactory.load()
+  val dbDriver = conf.getString("db.driver")
+  val dbDefaultConnStr = conf.getString("db.default_connection_string")
+  val dbUname = conf.getString("db.username")
+  val dbPasswd = conf.getString("db.password")
+  val logger = Logger("com.verticalshardspike")
+
+}
+
 object VerticalShards {
 
-  /*
-  + Create Index Shard (shard table)
-  shardId – used as the unique identifier for a shard
-  connectionString – a connection string used to connect to a shard
-  status – used to signify a shard’s status as online, offline, or in active insert mode
-  createdDate – the date the shard was added to the system, used for historical purposes
-
-  + create Domain Shard(user_lookup table)
-  userId – used to uniquely identify a user. Is the same userId used to identify a user within the user table located on each shard.
-  shardId – used to uniquely identify the current shard that a user is located on
-
-
-  Insert Scenario: A new user signs up.
-
-  Connect to the Index Shard using an application configuration-level connection string.
-  Query the shard table and retrieve the shard row that represents the current shard with a status of active insert mode.
-  Disconnect from the Index Shard.
-  Connect to the Domain Shard as specified by the previously retrieved shard row’s connectionString.
-  Insert the user’s sign up information into the user table. Retrieving the userId as a result.
-  Insert the user’s remaining creation information in to the user table’s related tables as necessary (i.e. user_profile, user_blog, etc).
-  Disconnect from the Domain Shard.
-  Connect to the Index Shard using an application configuration-level connection string.
-  Insert the new user’s lookup information into the user_lookup table, using the shardId from the retrieved shard table and the userId from the Domain Shard’s user table, for the new location of the user’s information.
-  Disconnect from the Index Shard.
-
-
-  Update Scenario: A user changes their password.
-
-  Connect to the Index Shard using an application configuration-level connection string.
-  Query the user_lookup table, using user_id of the user, and retrieve the user_lookup row that contains the user’s lookup information.
-  Query the shard table and retrieve the shard row that represents the user’s Domain Shard location.
-  Update the retrieved user_lookup row, changing the password field to the user’s new password.
-  Disconnect from the Index Shard.
-
-
-  Delete Scenario: A user closes their account.
-
-  Connect to the Index Shard using an application configuration-level connection string.
-  Query the user_lookup table, using the userId of the user, and retrieve the user_lookup row that contains the user’s lookup information, saving it for later use.
-  Query the shard table and retrieve the shard row that represents the user’s Domain Shard location.
-  Delete the user’s user_lookup row, using the user’s username and password, or userId to find the user’s row.
-  Disconnect from the Index Shard.
-  Connect to the Domain Shard as specified by the previously retrieved shard row’s connectionString.
-  Delete the user’s user row, found using the userId as retrieved earlier from the user_lookup table.
-  Disconnect from the Domain Shard.
-
-
-  Select Scenario: A system visitor views a user’s profile page.
-
-  Connect to the Index Shard using an application configuration-level connection string.
-  Query the user_lookup table, using the userId of the user, and retrieve the user_lookup row that contains the user’s lookup information.
-  Query the shard table and retrieve the shard row that represents the user’s Domain Shard location.
-  Disconnect from the Index Shard.
-  Connect to the Domain Shard as specified by the previously retrieved shard row’s connectionString.
-  Query the user_lookup table to retrieve the user’s basic information, using the previously retrieved userId.
-  As necessary, query the user’s additional profile information and blog entries via the user_profile, user_blog, and user_blog_entry tables respectively.
-  Disconnect from the Domain Shard.
-
-   */
-
-
-
-
-  def main(args: Array[String]) {
-    // connect to the database named "mysql" on the localhost
-    val driver = "org.postgresql.Driver"
-    val url = "jdbc:postgresql://localhost/arm"
-    val username = "arm"
-    val password = ""
-
-    // there's probably a better way to do this
-    var connection:Connection = null
-
-    try {
-      // make the connection
-      Class.forName(driver)
-      connection = DriverManager.getConnection(url, username, password)
-
-      // create the statement, and run the select query
-      val statement = connection.createStatement()
-      val resultSet = statement.execute("CREATE TABLE boohoo ( ID   INT NOT NULL, AGE  INT NOT NULL)")
-//      while ( resultSet.next() ) {
-//        val host = resultSet.getString("host")
-//        val user = resultSet.getString("user")
-//        println("host, user = " + host + ", " + user)
-//      }
-    } catch {
-      case e => e.printStackTrace
-    }
-    connection.close()
+  trait VerticalShardsManager {
+    def read(primaryKeys: List[String]): List[Option[DomainRecord]]
+    def write(domainRecord: DomainRecord): Unit
   }
+
+  class VerticalShardsManagerImpl extends VerticalShardsManager {
+
+    override def read(primaryKeys: List[String]): List[Option[DomainRecord]] = {
+
+      if (!ShardMetadataTableCreated) {
+        createShardMetadataTables
+      }
+
+      val domainRecord: List[Option[DomainRecord]] = for {
+        userId <- primaryKeys
+        userShardRecord = findUserShardRecord(userId)
+        shardRecord = findShardRecordById(userShardRecord.get.shardId).get
+        domainRecord = findDomainRecord(userId, shardRecord.connectionString)
+      } yield domainRecord
+
+      domainRecord
+    }
+
+    override def write(domainRecord: DomainRecord): Unit = {
+      if (!ShardMetadataTableCreated) {
+        createShardMetadataTables
+      }
+
+      val availableShardRecord = findAvailableShardRecord(shardSpike.findAvailableShardSqlStmt).get
+      insertDomainRecord(domainRecord.userId, availableShardRecord.shardId, availableShardRecord.connectionString)
+      updateShardRecordById(availableShardRecord.shardId, domainRecord.userId)
+
+    }
+
+    def insertDomainRecord(userId: String, shardId: String, connectionString: String): Boolean = {
+      if (!domainRecordTableExist(connectionString))
+        createDomainShardTable(sqlCreateDomainShardTableStmt, connectionString)
+
+      executeSql(s"INSERT INTO DomainShard VALUES ($userId, $shardId)", connectionString)
+    }
+
+    def findDomainRecord(userId: String, connectionString: String): Option[DomainRecord] = {
+      findDomainRecordById(s"SELECT * FROM DomainShard WHERE userId=$userId", connectionString)
+    }
+
+    def createIndexTable(sqlStmt: String): Boolean = {
+      executeSql(sqlStmt, externalizedConfigs.dbDefaultConnStr)
+    }
+
+    def createDomainShardTable(sqlStmt: String, connectionString: String): Boolean = {
+      executeSql(sqlStmt, externalizedConfigs.dbDefaultConnStr)
+    }
+
+    def domainRecordTableExist(connectionString: String): Boolean = {
+      executeSql(sqlDomainShardTableExistsStmt, connectionString)
+    }
+
+    def createShardMetadataTables: Unit = {
+      createIndexTable(sqlCreateIndexShardTableStmt)
+      /* Assume IndexShard table will be populated with a list of available shards in advance via base db migration */
+
+      createIndexTable(sqlCreateUserShardTableStmt)
+      ShardMetadataTableCreated = true
+    }
+
+
+    def executeSql(sqlStmt: String, connectionString: String): Boolean = {
+
+      var connection: Connection = null
+
+      try {
+        Class.forName(externalizedConfigs.dbDriver)
+        connection = DriverManager.getConnection(connectionString, externalizedConfigs.dbUname, externalizedConfigs.dbPasswd)
+
+        val statement = connection.createStatement()
+        val resultSet = statement.execute(sqlStmt)
+        connection.close()
+        resultSet
+      } catch {
+        case _: Throwable  =>
+          externalizedConfigs.logger.error(s"Error occurred while running SQL command!!!")
+          connection.close()
+          false
+      }
+    }
+
+    def findShardRecordById(shardId: String): Option[ShardIndexRecord] = {
+      try {
+        Class.forName(externalizedConfigs.dbDriver)
+        val connection = DriverManager.getConnection(externalizedConfigs.dbDefaultConnStr, externalizedConfigs.dbUname, externalizedConfigs.dbPasswd)
+
+        val statement = connection.prepareStatement(s"SELECT * FROM IndexShard WHERE shard_id=$shardId AND status=TRUE")
+        val resultSet = statement.executeQuery
+        if (resultSet.next()) {
+          connection.close()
+          Some(ShardIndexRecord(resultSet.getString("shard_id"), resultSet.getString("connection_string"), resultSet.getBoolean("status"), resultSet.getLong("created_date")))
+        }
+        None
+      } catch {
+        case _: Throwable  =>
+          externalizedConfigs.logger.warn(s"No Shard Index Record Found!!!")
+          None
+      }
+    }
+
+    def findAvailableShardRecord(sqlStmt: String): Option[ShardIndexRecord] = {
+
+      try {
+        // make the connection
+        Class.forName(externalizedConfigs.dbDriver)
+        val connection = DriverManager.getConnection(externalizedConfigs.dbDefaultConnStr, externalizedConfigs.dbUname, externalizedConfigs.dbPasswd)
+
+        // create the statement, and run specified sql
+        val statement = connection.prepareStatement(findAvailableShardSqlStmt)
+        val resultSet = statement.executeQuery
+        if (resultSet.next()) {
+          connection.close()
+          Some(ShardIndexRecord(resultSet.getString("shard_id"), resultSet.getString("connection_string"), resultSet.getBoolean("status"), resultSet.getLong("created_date")))
+        }
+        None
+      } catch {
+        case _: Throwable  =>
+          externalizedConfigs.logger.warn(s"No Shard Index Record Found!!!")
+          None
+      }
+    }
+
+    def findUserShardRecord(userId: String): Option[UserShardRecord] = {
+
+      try {
+        // make the connection
+        Class.forName(externalizedConfigs.dbDriver)
+        val connection = DriverManager.getConnection(externalizedConfigs.dbDefaultConnStr, externalizedConfigs.dbUname, externalizedConfigs.dbPasswd)
+
+        // create the statement, and run specified sql
+        val statement = connection.prepareStatement(s"SELECT * FROM UserShard WHERE user_id=$userId")
+        val resultSet = statement.executeQuery
+        if (resultSet.next()) {
+          connection.close()
+          Some(UserShardRecord(resultSet.getString("user_id"), resultSet.getString("shard_id")))
+        }
+        None
+      } catch {
+        case _: Throwable  =>
+          externalizedConfigs.logger.warn(s"No Shard Index Record Found!!!")
+          None
+      }
+    }
+
+    def findDomainRecordById(sqlStmt: String, connectionString: String): Option[DomainRecord] = {
+
+      try {
+        Class.forName(externalizedConfigs.dbDriver)
+        val connection = DriverManager.getConnection(connectionString, externalizedConfigs.dbUname, externalizedConfigs.dbPasswd)
+
+        val statement = connection.prepareStatement(sqlStmt)
+        val resultSet = statement.executeQuery
+        while (resultSet.next()) {
+          connection.close()
+          Some(DomainRecord(resultSet.getString("user_id"), resultSet.getString("password"), resultSet.getString("userName")))
+        }
+        None
+      } catch {
+        case _: Throwable  =>
+          externalizedConfigs.logger.warn(s"No Domain Record Found!!!")
+          None
+      }
+    }
+
+
+    def updateShardRecordById(shardId: String, userId: String): Boolean = {
+      try {
+        Class.forName(externalizedConfigs.dbDriver)
+        val connection = DriverManager.getConnection(externalizedConfigs.dbDefaultConnStr, externalizedConfigs.dbUname, externalizedConfigs.dbPasswd)
+
+        val statement = connection.createStatement
+        val resultSet = statement.executeUpdate(s"INSERT INTO IndexShard VALUES ($userId, $shardId)")
+        if (resultSet == 1)
+          true
+        else
+          false
+      } catch {
+        case _: Throwable  =>
+          externalizedConfigs.logger.warn(s"No Domain Record Found!!!")
+          false
+      }
+    }
+
+    def main(args: Array[String]): Unit = {
+
+    }
+
+  }
+
 }
 
